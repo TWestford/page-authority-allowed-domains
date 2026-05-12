@@ -2,6 +2,8 @@
 
 Restricts WordPress user accounts to administrator-approved email domains.
 
+[https://pageauthority.com/]([url](https://pageauthority.com/))
+
 ## Version
 
 1.9.0
