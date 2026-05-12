@@ -2,9 +2,9 @@
 Contributors: twestford
 Tags: users, security, registration, email, domains
 Requires at least: 6.0
-Tested up to: 6.9.4
+Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.8.9
+Stable tag: 1.8.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -103,66 +103,35 @@ On multisite, the matching network options are also removed.
 
 == Changelog ==
 
+= 1.8.12 =
+* Cleaned and consolidated changelog entries
+
+= 1.8.11 =
+* Updated WordPress.org plugin slug and text domain compatibility
+* Fixed automated scan compatibility issues
+
 = 1.8.9 =
-* Updated plugin display name to "Page Authority - Allowed Domains" for WordPress.org naming compliance.
-
-= 1.8.8 =
-* Updated compatibility metadata to reflect testing on WordPress 6.9.4.
-
-= 1.8.7 =
-* Packaged under the lowercase WordPress plugin slug allowed-email-domains.
-* Normalized text domain to match the lowercase plugin folder.
-* Removed hidden files from the distributable ZIP.
-* Set Tested up to to a Plugin Check-recognized version.
-
-= 1.8.5 =
-* Updated package folder and text domain to lowercase format.
-* Matched Tested up to values between plugin header and readme.txt.
-* Removed hidden files from the submission package.
-
-= 1.8.4 =
-* Updated text domain to match the current package slug used by Plugin Check.
-* Adjusted Tested up to value to a valid WordPress.org readme format.
-* Removed hidden files from the package.
-* Replaced remaining direct activation query check with sanitized input handling.
-
-= 1.8.3 =
-* Fixed text domain header and localization domains for WordPress.org checks.
-* Added translator comments for placeholder strings.
-* Removed update-specific metadata from the WordPress.org package.
-* Improved request sanitization for plugin check compatibility.
+* Renamed plugin to "Page Authority - Allowed Domains"
 
 = 1.8.2 =
-* Prepared package for WordPress.org-style distribution
-* Removed GitHub updater-specific plugin headers
-* Added WordPress.org-compatible readme.txt
-* Removed external updater documentation from the packaged README
+* Added unauthorized user audit tools
+* Added quick actions for adding domains and deleting users
 
 = 1.8.1 =
-* Added automatic redirect to the Allowed Domains settings page after plugin activation
-* Skips redirect during bulk activations and unauthorized admin contexts
+* Added login enforcement protections for unauthorized domains
 
 = 1.8.0 =
-* Updated repository URLs
+* Added WooCommerce, REST API, and multisite enforcement support
 
-= 1.7.x =
-* Added quick audit actions
-* Added GitHub metadata links for non-WordPress.org distribution
-* Added short-lived audit caching
-* Improved admin navigation
+= 1.7.0 =
+* Added GitHub update compatibility support
+* Improved admin navigation and documentation
 
-= 1.6.x =
-* Added Existing User Audit
-* Added login enforcement option
-* Added REST API and WooCommerce enforcement
-* Added unauthorized-user management tools
-* Added security documentation and compatibility metadata
+= 1.6.0 =
+* Improved validation, admin UX, and security handling
 
-= 1.5.x =
-* Improved admin validation UX
-* Added inline error messaging
-* Added uninstall handling
-* Improved plugin metadata and documentation
+= 1.5.0 =
+* Added uninstall cleanup and compatibility metadata
 
 = 1.0.0 =
-* Initial release
+* Initial plugin release

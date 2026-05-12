@@ -2,15 +2,15 @@
 /**
  * Plugin Name: Page Authority - Allowed Domains
  * Description: Restricts WordPress user emails to an administrator-managed allowlist of approved domains.
- * Version:     1.8.9
- * Requires PHP: 7.4
- * Tested up to: 6.9.4
+ * Version: 1.8.12
  * Requires at least: 6.0
- * Author:      Talisa
- * License:     GPL-2.0-or-later
- * Text Domain: allowed-email-domains
- * @package Allowed_Email_Domains
- * */
+ * Tested up to: 6.9
+ * Requires PHP: 7.4
+ * Author: Talisa
+ * License: GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: page-authority-allowed-domains
+ */
 
 if (!defined('ABSPATH')) {
     exit;
@@ -271,7 +271,7 @@ add_filter(
         if (!aed_is_email_allowed($user_email)) {
             $errors->add(
                 'aed_invalid_domain',
-                __('Registration is limited to approved email domains.', 'allowed-email-domains')
+                __('Registration is limited to approved email domains.', 'page-authority-allowed-domains')
             );
         }
 
@@ -312,24 +312,24 @@ add_action(
                 '</ol>' .
                 '<p>%s</p>' .
             '</div>',
-            esc_html__('This email domain is not approved for user accounts on this site.', 'allowed-email-domains'),
+            esc_html__('This email domain is not approved for user accounts on this site.', 'page-authority-allowed-domains'),
             sprintf(
                 /* translators: %s: Email domain. */
-                esc_html__('The domain "%s" is not on the list of allowed domains.', 'allowed-email-domains'),
+                esc_html__('The domain "%s" is not on the list of allowed domains.', 'page-authority-allowed-domains'),
                 esc_html(ltrim($domain, '@'))
             ),
-            esc_html__('How to fix this:', 'allowed-email-domains'),
+            esc_html__('How to fix this:', 'page-authority-allowed-domains'),
             sprintf(
                 wp_kses(
                     /* translators: %s: URL to the Allowed Domains settings page. */
-                    __('Go to <a href="%s">Users → Allowed Domains</a>.', 'allowed-email-domains'),
+                    __('Go to <a href="%s">Users → Allowed Domains</a>.', 'page-authority-allowed-domains'),
                     ['a' => ['href' => []]]
                 ),
                 esc_url($settings_url)
             ),
-            esc_html__('Add this domain (or the correct domain) to the allowed list.', 'allowed-email-domains'),
-            esc_html__('Save your changes and try again.', 'allowed-email-domains'),
-            esc_html__('Need help? Contact your site administrator.', 'allowed-email-domains')
+            esc_html__('Add this domain (or the correct domain) to the allowed list.', 'page-authority-allowed-domains'),
+            esc_html__('Save your changes and try again.', 'page-authority-allowed-domains'),
+            esc_html__('Need help? Contact your site administrator.', 'page-authority-allowed-domains')
         );
 
         $errors->add('aed_invalid_domain', $message);
@@ -360,8 +360,8 @@ add_filter(
             }
 
             wp_die(
-                esc_html__('This email domain is not approved for user accounts on this site.', 'allowed-email-domains'),
-                esc_html__('Email Domain Restricted', 'allowed-email-domains'),
+                esc_html__('This email domain is not approved for user accounts on this site.', 'page-authority-allowed-domains'),
+                esc_html__('Email Domain Restricted', 'page-authority-allowed-domains'),
                 ['response' => 403]
             );
         }
@@ -407,7 +407,7 @@ function aed_print_email_disclaimer() {
             sprintf(
                 wp_kses(
                     /* translators: %s: URL to the Allowed Domains settings page. */
-                        __('Only approved domains can be used for user accounts. Manage the allowlist under <a href="%s">Users → Allowed Domains</a>.', 'allowed-email-domains'),
+                        __('Only approved domains can be used for user accounts. Manage the allowlist under <a href="%s">Users → Allowed Domains</a>.', 'page-authority-allowed-domains'),
                     ['a' => ['href' => []]]
                 ),
                 esc_url($settings_url)
@@ -474,8 +474,8 @@ add_action(
     'admin_menu',
     function () {
         add_users_page(
-            __('Allowed Domains', 'allowed-email-domains'),
-            __('Allowed Domains', 'allowed-email-domains'),
+            __('Allowed Domains', 'page-authority-allowed-domains'),
+            __('Allowed Domains', 'page-authority-allowed-domains'),
             aed_manage_capability(),
             'aed-settings',
             'aed_render_settings_page'
@@ -498,7 +498,7 @@ add_action(
         }
 
         if (!current_user_can(aed_manage_capability())) {
-            wp_die(esc_html__('You do not have permission to manage allowed email domains.', 'allowed-email-domains'));
+            wp_die(esc_html__('You do not have permission to manage allowed email domains.', 'page-authority-allowed-domains'));
         }
 
         check_admin_referer('aed_save_domains');
@@ -603,7 +603,7 @@ add_filter(
         if (!empty($prepared_user->user_email) && !aed_is_email_allowed($prepared_user->user_email)) {
             return new WP_Error(
                 'aed_invalid_domain',
-                __('This email domain is not approved for user accounts on this site.', 'allowed-email-domains'),
+                __('This email domain is not approved for user accounts on this site.', 'page-authority-allowed-domains'),
                 ['status' => 403]
             );
         }
@@ -626,7 +626,7 @@ add_filter(
         if (!aed_is_email_allowed($email)) {
             $errors->add(
                 'aed_invalid_domain',
-                __('This email domain is not approved for user accounts on this site. Please use an approved email address or contact the site administrator.', 'allowed-email-domains')
+                __('This email domain is not approved for user accounts on this site. Please use an approved email address or contact the site administrator.', 'page-authority-allowed-domains')
             );
         }
 
@@ -688,7 +688,7 @@ add_filter(
         if (!aed_is_email_allowed($user->user_email)) {
             return new WP_Error(
                 'aed_login_blocked',
-                __('Your account email domain is not currently approved for this site. Please contact the site administrator.', 'allowed-email-domains')
+                __('Your account email domain is not currently approved for this site. Please contact the site administrator.', 'page-authority-allowed-domains')
             );
         }
 
@@ -709,7 +709,7 @@ function aed_handle_login_blocking_setting() {
     }
 
     if (!current_user_can(aed_manage_capability())) {
-        wp_die(esc_html__('You do not have permission to manage login enforcement.', 'allowed-email-domains'));
+        wp_die(esc_html__('You do not have permission to manage login enforcement.', 'page-authority-allowed-domains'));
     }
 
     check_admin_referer('aed_save_login_blocking');
@@ -847,7 +847,7 @@ function aed_show_unauthorized_users_admin_notice() {
     ?>
     <div class="notice notice-warning">
         <p>
-            <strong><?php esc_html_e('Allowed Email Domains audit warning:', 'allowed-email-domains'); ?></strong>
+            <strong><?php esc_html_e('Allowed Email Domains audit warning:', 'page-authority-allowed-domains'); ?></strong>
             <?php
             printf(
                 esc_html(
@@ -856,14 +856,14 @@ function aed_show_unauthorized_users_admin_notice() {
                         '%d existing user has an email domain that is not currently allowed.',
                         '%d existing users have email domains that are not currently allowed.',
                         count($flagged),
-                        'allowed-email-domains'
+                        'page-authority-allowed-domains'
                     )
                 ),
                 count($flagged)
             );
             ?>
             <a href="<?php echo esc_url($report_url); ?>">
-                <?php esc_html_e('Review the audit report.', 'allowed-email-domains'); ?>
+                <?php esc_html_e('Review the audit report.', 'page-authority-allowed-domains'); ?>
             </a>
         </p>
     </div>
@@ -892,7 +892,7 @@ function aed_handle_delete_unauthorized_user() {
     }
 
     if (!current_user_can(aed_manage_capability())) {
-        wp_die(esc_html__('You do not have permission to delete users.', 'allowed-email-domains'));
+        wp_die(esc_html__('You do not have permission to delete users.', 'page-authority-allowed-domains'));
     }
 
     $user_id = absint(filter_input(INPUT_GET, 'user_id', FILTER_SANITIZE_NUMBER_INT));
@@ -1015,7 +1015,7 @@ add_action('admin_init', 'aed_handle_delete_unauthorized_user');
  */
 function aed_handle_add_audit_domain_to_allowlist() {
     if (!current_user_can(aed_manage_capability())) {
-        wp_die(esc_html__('You do not have permission to manage allowed domains.', 'allowed-email-domains'));
+        wp_die(esc_html__('You do not have permission to manage allowed domains.', 'page-authority-allowed-domains'));
     }
 
     $domain = sanitize_text_field((string) filter_input(INPUT_GET, 'domain', FILTER_SANITIZE_FULL_SPECIAL_CHARS));
@@ -1082,18 +1082,18 @@ function aed_render_settings_page() {
 
     ?>
     <div class="wrap">
-        <h1><?php esc_html_e('Allowed Email Domains', 'allowed-email-domains'); ?></h1>
+        <h1><?php esc_html_e('Allowed Email Domains', 'page-authority-allowed-domains'); ?></h1>
 
         <?php if (!empty($aed_updated_notice)) : ?>
             <div class="notice notice-success is-dismissible">
-                <p><?php esc_html_e('Allowed email domains updated.', 'allowed-email-domains'); ?></p>
+                <p><?php esc_html_e('Allowed email domains updated.', 'page-authority-allowed-domains'); ?></p>
             </div>
         <?php endif; ?>
 
         <?php if (aed_allowlist_is_empty()) : ?>
             <div class="notice notice-warning">
                 <p>
-                    <?php esc_html_e('No domains are configured. All email domains are currently allowed.', 'allowed-email-domains'); ?>
+                    <?php esc_html_e('No domains are configured. All email domains are currently allowed.', 'page-authority-allowed-domains'); ?>
                 </p>
             </div>
         <?php endif; ?>
@@ -1106,7 +1106,7 @@ function aed_render_settings_page() {
                 <tr>
                     <th scope="row">
                         <label for="<?php echo esc_attr(AED_OPTION_KEY); ?>">
-                            <?php esc_html_e('Allowed Email Domains', 'allowed-email-domains'); ?>
+                            <?php esc_html_e('Allowed Email Domains', 'page-authority-allowed-domains'); ?>
                         </label>
                     </th>
                     <td>
@@ -1120,22 +1120,22 @@ function aed_render_settings_page() {
                         ><?php echo esc_textarea($domains); ?></textarea>
 
                         <p class="description">
-                            <?php esc_html_e('One domain per line. Entries are normalized to start with "@". A valid suffix/TLD is required. Empty list allows all domains.', 'allowed-email-domains'); ?>
+                            <?php esc_html_e('One domain per line. Entries are normalized to start with "@". A valid suffix/TLD is required. Empty list allows all domains.', 'page-authority-allowed-domains'); ?>
                         </p>
                     </td>
                 </tr>
             </table>
 
-            <?php submit_button(__('Save Domains', 'allowed-email-domains')); ?>
+            <?php submit_button(__('Save Domains', 'page-authority-allowed-domains')); ?>
         </form>
 
         
         <hr>
 
-        <h2><?php esc_html_e('Login Enforcement', 'allowed-email-domains'); ?></h2>
+        <h2><?php esc_html_e('Login Enforcement', 'page-authority-allowed-domains'); ?></h2>
 
         <p>
-            <?php esc_html_e('Optional login blocking prevents existing users with unauthorized email domains from signing in. Leave this disabled until you have reviewed the Existing User Audit to avoid accidental lockouts.', 'allowed-email-domains'); ?>
+            <?php esc_html_e('Optional login blocking prevents existing users with unauthorized email domains from signing in. Leave this disabled until you have reviewed the Existing User Audit to avoid accidental lockouts.', 'page-authority-allowed-domains'); ?>
         </p>
 
         <form method="post" action="">
@@ -1149,46 +1149,46 @@ function aed_render_settings_page() {
                     value="1"
                     <?php checked(aed_login_blocking_enabled()); ?>
                 >
-                <?php esc_html_e('Block login for users whose email domain is not allowed', 'allowed-email-domains'); ?>
+                <?php esc_html_e('Block login for users whose email domain is not allowed', 'page-authority-allowed-domains'); ?>
             </label>
 
-            <?php submit_button(__('Save Login Enforcement Setting', 'allowed-email-domains')); ?>
+            <?php submit_button(__('Save Login Enforcement Setting', 'page-authority-allowed-domains')); ?>
         </form>
 
         <hr id="aed-existing-user-audit">
 
-        <h2><?php esc_html_e('Existing User Audit', 'allowed-email-domains'); ?></h2>
+        <h2><?php esc_html_e('Existing User Audit', 'page-authority-allowed-domains'); ?></h2>
 
         <p>
-            <?php esc_html_e('This report flags existing users whose email domains are not currently on the allowed list. It is audit-only and does not disable, delete, or modify users.', 'allowed-email-domains'); ?>
+            <?php esc_html_e('This report flags existing users whose email domains are not currently on the allowed list. It is audit-only and does not disable, delete, or modify users.', 'page-authority-allowed-domains'); ?>
         </p>
 
         <?php $unauthorized_users = aed_get_unauthorized_existing_users(); ?>
 
         <?php if (aed_allowlist_is_empty()) : ?>
             <div class="notice notice-info inline">
-                <p><?php esc_html_e('No audit results are shown because the allowlist is empty and all domains are currently allowed.', 'allowed-email-domains'); ?></p>
+                <p><?php esc_html_e('No audit results are shown because the allowlist is empty and all domains are currently allowed.', 'page-authority-allowed-domains'); ?></p>
             </div>
         <?php elseif (empty($unauthorized_users)) : ?>
             <div class="notice notice-success inline">
-                <p><?php esc_html_e('No existing users with unauthorized email domains were found.', 'allowed-email-domains'); ?></p>
+                <p><?php esc_html_e('No existing users with unauthorized email domains were found.', 'page-authority-allowed-domains'); ?></p>
             </div>
         <?php else : ?>
             <div class="notice notice-warning inline">
                 <p>
-                    <strong><?php esc_html_e('Action recommended:', 'allowed-email-domains'); ?></strong>
-                    <?php esc_html_e('Review these users, update their email addresses, add the appropriate domains to the allowlist, or delete individual unauthorized users.', 'allowed-email-domains'); ?>
+                    <strong><?php esc_html_e('Action recommended:', 'page-authority-allowed-domains'); ?></strong>
+                    <?php esc_html_e('Review these users, update their email addresses, add the appropriate domains to the allowlist, or delete individual unauthorized users.', 'page-authority-allowed-domains'); ?>
                 </p>
             </div>
 
             <table class="widefat striped">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e('User', 'allowed-email-domains'); ?></th>
-                        <th><?php esc_html_e('Username', 'allowed-email-domains'); ?></th>
-                        <th><?php esc_html_e('Email', 'allowed-email-domains'); ?></th>
-                        <th><?php esc_html_e('Domain', 'allowed-email-domains'); ?></th>
-                        <th><?php esc_html_e('Action', 'allowed-email-domains'); ?></th>
+                        <th><?php esc_html_e('User', 'page-authority-allowed-domains'); ?></th>
+                        <th><?php esc_html_e('Username', 'page-authority-allowed-domains'); ?></th>
+                        <th><?php esc_html_e('Email', 'page-authority-allowed-domains'); ?></th>
+                        <th><?php esc_html_e('Domain', 'page-authority-allowed-domains'); ?></th>
+                        <th><?php esc_html_e('Action', 'page-authority-allowed-domains'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1200,7 +1200,7 @@ function aed_render_settings_page() {
                             <td><?php echo esc_html($audit_user['domain']); ?></td>
                             <td>
                                 <a href="<?php echo esc_url(get_edit_user_link((int) $audit_user['id'])); ?>">
-                                    <?php esc_html_e('Edit user', 'allowed-email-domains'); ?>
+                                    <?php esc_html_e('Edit user', 'page-authority-allowed-domains'); ?>
                                 </a>
                                 |
                                 <?php
@@ -1216,7 +1216,7 @@ function aed_render_settings_page() {
                                 );
                                 ?>
                                 <a href="<?php echo esc_url($add_domain_url); ?>">
-                                    <?php esc_html_e('Add domain', 'allowed-email-domains'); ?>
+                                    <?php esc_html_e('Add domain', 'page-authority-allowed-domains'); ?>
                                 </a>
                                 |
                                 <?php
@@ -1235,9 +1235,9 @@ function aed_render_settings_page() {
                                 <a
                                     href="<?php echo esc_url($delete_url); ?>"
                                     class="submitdelete"
-                                    onclick="return confirm('<?php echo esc_js(__('Delete this unauthorized user? This cannot be undone.', 'allowed-email-domains')); ?>');"
+                                    onclick="return confirm('<?php echo esc_js(__('Delete this unauthorized user? This cannot be undone.', 'page-authority-allowed-domains')); ?>');"
                                 >
-                                    <?php esc_html_e('Delete user', 'allowed-email-domains'); ?>
+                                    <?php esc_html_e('Delete user', 'page-authority-allowed-domains'); ?>
                                 </a>
                             </td>
                         </tr>
@@ -1249,14 +1249,14 @@ function aed_render_settings_page() {
 
         <hr>
 
-        <h2><?php esc_html_e('Recent Allowlist Changes', 'allowed-email-domains'); ?></h2>
+        <h2><?php esc_html_e('Recent Allowlist Changes', 'page-authority-allowed-domains'); ?></h2>
 
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e('Timestamp', 'allowed-email-domains'); ?></th>
-                    <th><?php esc_html_e('Admin', 'allowed-email-domains'); ?></th>
-                    <th><?php esc_html_e('Domains', 'allowed-email-domains'); ?></th>
+                    <th><?php esc_html_e('Timestamp', 'page-authority-allowed-domains'); ?></th>
+                    <th><?php esc_html_e('Admin', 'page-authority-allowed-domains'); ?></th>
+                    <th><?php esc_html_e('Domains', 'page-authority-allowed-domains'); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -1275,7 +1275,7 @@ function aed_render_settings_page() {
                     <?php endforeach; ?>
                 <?php else : ?>
                     <tr>
-                        <td colspan="3"><?php esc_html_e('No changes logged yet.', 'allowed-email-domains'); ?></td>
+                        <td colspan="3"><?php esc_html_e('No changes logged yet.', 'page-authority-allowed-domains'); ?></td>
                     </tr>
                 <?php endif; ?>
             </tbody>
@@ -1305,7 +1305,7 @@ function aed_plugin_action_links($links) {
         '<a href="' .
         esc_url(admin_url('users.php?page=aed-settings')) .
         '">' .
-        esc_html__('Settings', 'allowed-email-domains') .
+        esc_html__('Settings', 'page-authority-allowed-domains') .
         '</a>';
 
     array_unshift($links, $settings_link);

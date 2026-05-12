@@ -4,7 +4,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 
 ## Version
 
-1.8.9
+1.8.12
 
 ## Features
 
@@ -37,7 +37,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 
 * WordPress 6.0+
 * PHP 7.4+
-* Tested on WordPress 6.9.4
+* Tested on WordPress 6.9
 
 ## Security & Enforcement
 
@@ -96,71 +96,35 @@ On multisite, the matching network options are also removed.
 
 ## Changelog
 
+### 1.8.12
+- Cleaned and consolidated changelog entries
+
+### 1.8.11
+- Updated WordPress.org plugin slug and text domain compatibility
+- Fixed automated scan compatibility issues
+
 ### 1.8.9
-
-- Updated plugin display name to improve WordPress.org naming compliance
-
-### 1.8.7
-
-- Packaged under the lowercase WordPress plugin slug `allowed-email-domains`
-- Normalized text domain to match the lowercase plugin folder
-- Removed hidden files from the distributable ZIP
-- Set `Tested up to` to a Plugin Check-recognized version
-
-### 1.8.5
-
-- Updated package folder and text domain to lowercase format
-- Matched `Tested up to` values between plugin header and `readme.txt`
-- Removed hidden files from the submission package
-
-### 1.8.4
-
-- Updated text domain to match the current Plugin Check package slug
-- Adjusted `Tested up to` value for WordPress.org readme validation
-- Removed hidden files from the package
-- Replaced remaining direct activation query check with sanitized input handling
-
-### 1.8.3
-
-- Fixed text domain and localization issues for WordPress.org checks
-- Added translator comments for placeholder strings
-- Removed update-specific metadata from the WordPress.org package
-- Improved request sanitization for plugin check compatibility
+- Renamed plugin to "Page Authority - Allowed Domains"
 
 ### 1.8.2
+- Added unauthorized user audit tools
+- Added quick actions for adding domains and deleting users
 
-- Prepared package for WordPress.org-style distribution
-- Removed GitHub updater-specific plugin headers
-- Added WordPress.org-compatible `readme.txt`
-- Removed external updater documentation from the packaged README
+### 1.8.1
+- Added login enforcement protections for unauthorized domains
 
-### 1.8.x
+### 1.8.0
+- Added WooCommerce, REST API, and multisite enforcement support
 
-* Added activation redirect to the Allowed Domains settings page
-* Updated repository metadata for GitHub distribution
+### 1.7.0
+- Added GitHub update compatibility support
+- Improved admin navigation and documentation
 
-### 1.7.x
+### 1.6.0
+- Improved validation, admin UX, and security handling
 
-* Replaced bulk deletion with per-user delete actions
-* Added quick audit actions
-* Added short-lived audit caching
-* Improved admin navigation and documentation access
-
-### 1.6.x
-
-* Added Existing User Audit
-* Added login enforcement option
-* Added REST API and WooCommerce enforcement
-* Added unauthorized-user management tools
-* Added security documentation and compatibility metadata
-
-### 1.5.x
-
-* Improved admin validation UX
-* Added inline error messaging
-* Added uninstall handling
-* Improved plugin metadata and documentation
+### 1.5.0
+- Added uninstall cleanup and compatibility metadata
 
 ### 1.0.0
-
-* Initial release
+- Initial plugin release
