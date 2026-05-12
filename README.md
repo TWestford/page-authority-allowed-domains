@@ -1,10 +1,10 @@
-# Allowed Email Domains
+# Page Authority - Allowed Domains
 
 Restricts WordPress user accounts to administrator-approved email domains.
 
 ## Version
 
-1.8.8
+1.8.9
 
 ## Features
 
@@ -95,6 +95,10 @@ Deleting the plugin from WordPress removes:
 On multisite, the matching network options are also removed.
 
 ## Changelog
+
+### 1.8.9
+
+- Updated plugin display name to improve WordPress.org naming compliance
 
 ### 1.8.7
 

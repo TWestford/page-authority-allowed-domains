@@ -1,10 +1,10 @@
-=== Allowed Email Domains ===
+=== Page Authority - Allowed Domains ===
 Contributors: twestford
 Tags: users, security, registration, email, domains
 Requires at least: 6.0
 Tested up to: 6.9.4
 Requires PHP: 7.4
-Stable tag: 1.8.8
+Stable tag: 1.8.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -102,6 +102,9 @@ Deleting the plugin removes:
 On multisite, the matching network options are also removed.
 
 == Changelog ==
+
+= 1.8.9 =
+* Updated plugin display name to "Page Authority - Allowed Domains" for WordPress.org naming compliance.
 
 = 1.8.8 =
 * Updated compatibility metadata to reflect testing on WordPress 6.9.4.

@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: Allowed Email Domains
+ * Plugin Name: Page Authority - Allowed Domains
  * Description: Restricts WordPress user emails to an administrator-managed allowlist of approved domains.
- * Version:     1.8.8
+ * Version:     1.8.9
  * Requires PHP: 7.4
  * Tested up to: 6.9.4
  * Requires at least: 6.0
