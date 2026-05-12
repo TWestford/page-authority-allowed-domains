@@ -529,7 +529,8 @@ add_action(
 add_action(
     'admin_init',
     function () {
-        $action = isset($_POST['aed_action']) ? wp_unslash($_POST['aed_action']) : '';
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Action dispatch only; nonce is verified immediately below.
+        $action = isset($_POST['aed_action']) ? sanitize_key(wp_unslash($_POST['aed_action'])) : '';
         if ($action !== 'save_domains') {
             return;
         }
@@ -741,7 +742,8 @@ add_filter(
  * Handle login-blocking setting changes.
  */
 function aed_handle_login_blocking_setting() {
-    $action = isset($_POST['aed_action']) ? wp_unslash($_POST['aed_action']) : '';
+    // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Action dispatch only; nonce is verified immediately below.
+    $action = isset($_POST['aed_action']) ? sanitize_key(wp_unslash($_POST['aed_action'])) : '';
     if ($action !== 'save_login_blocking') {
         return;
     }
@@ -864,19 +866,31 @@ function aed_get_unauthorized_existing_users() {
  * @return int Number of posts owned by the user.
  */
 function aed_count_user_owned_content($user_id) {
-    global $wpdb;
-
     $user_id = (int) $user_id;
     if ($user_id <= 0) {
         return 0;
     }
 
-    return (int) $wpdb->get_var(
+    $cache_key = 'aed_user_content_count_' . $user_id;
+    $cached    = wp_cache_get($cache_key, 'aed');
+
+    if (false !== $cached) {
+        return (int) $cached;
+    }
+
+    global $wpdb;
+
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- COUNT() is faster than loading all posts; result is cached via wp_cache_set immediately below.
+    $count = (int) $wpdb->get_var(
         $wpdb->prepare(
             "SELECT COUNT(ID) FROM {$wpdb->posts} WHERE post_author = %d AND post_status NOT IN ('auto-draft', 'trash')",
             $user_id
         )
     );
+
+    wp_cache_set($cache_key, $count, 'aed', MINUTE_IN_SECONDS);
+
+    return $count;
 }
 
 /**
@@ -1097,7 +1111,8 @@ add_action('wp_ajax_aed_get_user_delete_info', 'aed_ajax_get_user_delete_info');
  * @return void
  */
 function aed_handle_delete_unauthorized_user() {
-    $action = isset($_GET['aed_action']) ? wp_unslash($_GET['aed_action']) : '';
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Action dispatch only; nonce is verified once we know it's our request.
+    $action = isset($_GET['aed_action']) ? sanitize_key(wp_unslash($_GET['aed_action'])) : '';
     if ($action !== 'delete_unauthorized_user') {
         return;
     }
@@ -1385,6 +1400,7 @@ function aed_render_settings_page() {
     $domains = implode("\n", aed_get_allowed_domains());
     $logs    = aed_get_option(AED_LOG_KEY, []);
 
+    // phpcs:disable WordPress.Security.NonceVerification.Recommended -- Display-only notice flags set by this plugin's own redirects after nonce-verified actions; the page itself is capability-checked above and performs no state changes.
     $aed_updated_notice                = isset($_GET['updated']) ? sanitize_text_field(wp_unslash($_GET['updated'])) : '';
     $aed_added_domain_notice           = isset($_GET['aed_added_domain']) ? sanitize_text_field(wp_unslash($_GET['aed_added_domain'])) : '';
     $aed_add_error_notice              = isset($_GET['aed_add_error']) ? sanitize_text_field(wp_unslash($_GET['aed_add_error'])) : '';
@@ -1392,6 +1408,8 @@ function aed_render_settings_page() {
     $aed_deleted_user_notice           = isset($_GET['aed_deleted_user']) ? absint($_GET['aed_deleted_user']) : 0;
     $aed_deleted_reassign_notice       = isset($_GET['aed_deleted_reassign']) ? absint($_GET['aed_deleted_reassign']) : 0;
     $aed_delete_error_notice           = isset($_GET['aed_delete_error']) ? sanitize_text_field(wp_unslash($_GET['aed_delete_error'])) : '';
+    $aed_deleted_id_present            = !empty($_GET['aed_deleted_id']);
+    // phpcs:enable WordPress.Security.NonceVerification.Recommended
 
     ?>
     <div class="wrap">
@@ -1432,7 +1450,11 @@ function aed_render_settings_page() {
                         $reassign_user = get_userdata($aed_deleted_reassign_notice);
                         $reassign_label = $reassign_user
                             ? ($reassign_user->display_name ?: $reassign_user->user_login)
-                            : sprintf(__('user #%d', 'page-authority-allowed-domains'), $aed_deleted_reassign_notice);
+                            : sprintf(
+                                /* translators: %d: User ID. */
+                                __('user #%d', 'page-authority-allowed-domains'),
+                                $aed_deleted_reassign_notice
+                            );
                         printf(
                             /* translators: %s: display name of the user content was reassigned to. */
                             esc_html__('User deleted. Their content was reassigned to %s.', 'page-authority-allowed-domains'),
@@ -1444,7 +1466,7 @@ function aed_render_settings_page() {
                     ?>
                 </p>
             </div>
-        <?php elseif ($aed_deleted_user_notice === 0 && !empty($_GET['aed_deleted_id'])) : ?>
+        <?php elseif ($aed_deleted_user_notice === 0 && $aed_deleted_id_present) : ?>
             <div class="notice notice-error is-dismissible">
                 <p><?php esc_html_e('User could not be deleted. Please try again.', 'page-authority-allowed-domains'); ?></p>
             </div>
@@ -2148,6 +2170,7 @@ function aed_do_activation_redirect() {
         return;
     }
 
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading the standard WordPress bulk-activation flag to opt out of redirect; no state change here.
     if (isset($_GET['activate-multi'])) {
         return;
     }
@@ -2176,7 +2199,7 @@ function aed_plugin_row_meta_links($links, $file) {
     }
 
     $links[] =
-        '<a href="https://github.com/TWestford/Wordpress-User-Domain-Allow-List" target="_blank" rel="noopener noreferrer">' .
+        '<a href="https://github.com/TWestford/Page-Authority-Allowed-Domains" target="_blank" rel="noopener noreferrer">' .
         esc_html__('GitHub', 'page-authority-allowed-domains') .
         '</a>';
 

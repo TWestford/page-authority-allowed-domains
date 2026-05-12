@@ -16,8 +16,6 @@ Allowed Email Domains gives administrators a simple way to restrict WordPress us
 
 The plugin is designed for sites where only users from specific organizations, companies, clients, or teams should be added as WordPress users.
 
-https://pageauthority.com/
-
 Features include:
 
 * Admin-managed allowed domain list
