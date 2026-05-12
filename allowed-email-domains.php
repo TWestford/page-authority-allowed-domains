@@ -2199,7 +2199,7 @@ function aed_plugin_row_meta_links($links, $file) {
     }
 
     $links[] =
-        '<a href="https://github.com/TWestford/Page-Authority-Allowed-Domains" target="_blank" rel="noopener noreferrer">' .
+        '<a href="https://github.com/TWestford/page-authority-allowed-domains" target="_blank" rel="noopener noreferrer">' .
         esc_html__('GitHub', 'page-authority-allowed-domains') .
         '</a>';
 
