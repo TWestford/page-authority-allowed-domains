@@ -2,11 +2,12 @@
 /**
  * Plugin Name: Page Authority - Allowed Domains
  * Description: Restricts WordPress user emails to an administrator-managed allowlist of approved domains.
- * Version: 1.8.12
+ * Version: 1.8.15
  * Requires at least: 6.0
  * Tested up to: 6.9
  * Requires PHP: 7.4
  * Author: Talisa
+ * Author URI: https://pageauthority.com/
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: page-authority-allowed-domains
@@ -1401,3 +1402,28 @@ add_action('admin_init', 'aed_do_activation_redirect');
  * to first-time activation only.
  */
 
+
+
+
+/**
+ * Add GitHub to the plugin row metadata on the Plugins screen.
+ *
+ * @param array  $links Plugin row meta links.
+ * @param string $file  Plugin file path.
+ * @return array
+ */
+function aed_plugin_row_meta_links($links, $file) {
+
+    if ($file !== plugin_basename(__FILE__)) {
+        return $links;
+    }
+
+    $links[] =
+        '<a href="https://github.com/TWestford/Wordpress-User-Domain-Allow-List" target="_blank" rel="noopener noreferrer">' .
+        esc_html__('GitHub', 'page-authority-allowed-domains') .
+        '</a>';
+
+    return $links;
+}
+
+add_filter('plugin_row_meta', 'aed_plugin_row_meta_links', 10, 2);

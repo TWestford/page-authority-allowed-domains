@@ -4,7 +4,7 @@ Tags: users, security, registration, email, domains
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.8.12
+Stable tag: 1.8.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -102,6 +102,13 @@ Deleting the plugin removes:
 On multisite, the matching network options are also removed.
 
 == Changelog ==
+
+= 1.8.15 =
+* Removed redundant GitHub plugin site link from the Plugins screen.
+
+= 1.8.14 =
+* Added GitHub plugin metadata link on the WordPress Plugins screen.
+* Added Page Authority author URL metadata.
 
 = 1.8.12 =
 * Cleaned and consolidated changelog entries

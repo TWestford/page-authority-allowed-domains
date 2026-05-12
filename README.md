@@ -4,7 +4,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 
 ## Version
 
-1.8.12
+1.8.15
 
 ## Features
 
@@ -95,6 +95,15 @@ Deleting the plugin from WordPress removes:
 On multisite, the matching network options are also removed.
 
 ## Changelog
+
+### 1.8.15
+
+- Removed redundant GitHub plugin site link from the Plugins screen
+
+### 1.8.14
+
+- Added GitHub plugin metadata link on the WordPress Plugins screen
+- Added Page Authority author URL metadata
 
 ### 1.8.12
 - Cleaned and consolidated changelog entries
