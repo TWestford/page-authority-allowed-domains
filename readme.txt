@@ -4,7 +4,7 @@ Tags: users, security, registration, email, domains
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.8.15
+Stable tag: 1.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,7 +24,7 @@ Features include:
 * WooCommerce registration enforcement
 * Existing User Audit tools
 * Optional login enforcement
-* Per-user unauthorized account removal
+* Per-user unauthorized account removal with content reassignment
 * Multisite-aware protections
 * Lightweight architecture with no custom database tables
 
@@ -61,7 +61,9 @@ The Existing User Audit identifies existing users whose email domains are not cu
 
 Yes. The audit table includes per-user delete actions for unauthorized users.
 
-Deletion actions are protected by capability checks, nonce verification, confirmation prompts, current-admin protection, and multisite Super Admin protection.
+When a user owns posts or pages, a confirmation modal appears with a dropdown of compliant users (those whose email is on the allowlist) for content reassignment. Administrators can also choose to delete the user and all their content.
+
+Deletion actions are protected by nonce verification, capability checks, confirmation prompts, current-admin protection, multisite Super Admin protection, and a server-side failsafe that refuses to silently delete a user's content.
 
 = Can users with unauthorized domains be blocked from logging in? =
 
@@ -78,11 +80,12 @@ No. The plugin stores settings using WordPress options and does not create custo
 The plugin includes:
 
 * Capability checks
-* Nonce verification
+* Nonce verification (verified before any state-changing logic runs)
 * Sanitization and escaping
 * Live revalidation before destructive actions
 * Current-admin protection
 * Multisite Super Admin protection
+* Explicit content reassignment or delete confirmation before user removal
 
 Recommended operational practices:
 
@@ -102,6 +105,17 @@ Deleting the plugin removes:
 On multisite, the matching network options are also removed.
 
 == Changelog ==
+
+= 1.9.0 =
+* Security: nonce verification now runs before capability checks and before any input processing in the audit-domain-add and user-delete handlers
+* Security: programmatic user creation in admin context (admin-ajax, importers, REST in admin) is no longer silently allowed; only the user-edit/user-new screens defer to the inline error path
+* Performance: existing-user audit query is paginated to avoid loading every user into memory on large sites
+* Feature: deleting an unauthorized user who owns posts or pages now opens a confirmation modal with a dropdown of compliant users for content reassignment, or an explicit "delete content" option
+* Feature: success notice when a domain is added directly from the audit
+* Feature: clearer error notices for delete failures (missing user, current user, super admin, allowed-now, content-without-confirmation, invalid reassignment target)
+* Hardening: server-side failsafe refuses to delete a user with owned content unless reassignment or explicit content-delete is specified
+* Hardening: reassignment target is revalidated as a real, compliant user before deletion proceeds
+* Cleanup: removed dead query-parameter handling, consistent input handling throughout
 
 = 1.8.15 =
 * Removed redundant GitHub plugin site link from the Plugins screen.

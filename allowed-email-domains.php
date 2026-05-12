@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Page Authority - Allowed Domains
  * Description: Restricts WordPress user emails to an administrator-managed allowlist of approved domains.
- * Version: 1.8.15
+ * Version: 1.9.0
  * Requires at least: 6.0
  * Tested up to: 6.9
  * Requires PHP: 7.4
@@ -58,6 +58,22 @@ define('AED_AUDIT_CACHE_TTL', 5 * MINUTE_IN_SECONDS);
  * Default is disabled to prevent accidental lockouts on existing sites.
  */
 define('AED_LOGIN_BLOCK_OPTION_KEY', 'aed_block_unauthorized_logins');
+
+/**
+ * Batch size for paginated user queries.
+ *
+ * Used by the Existing User Audit and the reassignment dropdown helper to
+ * avoid loading every user into memory on large installations.
+ */
+define('AED_USER_QUERY_BATCH_SIZE', 500);
+
+/**
+ * Maximum number of compliant users returned for the reassignment dropdown.
+ *
+ * Keeps the modal usable on large sites. If a site has more eligible users
+ * than this, only the first set is returned and the admin is informed.
+ */
+define('AED_REASSIGN_DROPDOWN_LIMIT', 500);
 
 /**
  * ============================================================================
@@ -227,13 +243,6 @@ function aed_allowlist_is_empty() {
 }
 
 /**
- * Check whether an email address is allowed by the current allowlist.
- *
- * @param string $email Email address.
- * @return bool
- */
-
-/**
  * Check whether login blocking is enabled.
  *
  * Default is OFF. This prevents accidental lockouts when an allowlist is first
@@ -245,6 +254,12 @@ function aed_login_blocking_enabled() {
     return (bool) aed_get_option(AED_LOGIN_BLOCK_OPTION_KEY, false);
 }
 
+/**
+ * Check whether an email address is allowed by the current allowlist.
+ *
+ * @param string $email Email address.
+ * @return bool
+ */
 function aed_is_email_allowed($email) {
     if (aed_allowlist_is_empty()) {
         return true;
@@ -341,33 +356,56 @@ add_action(
 
 
 /**
+ * Return the set of admin screen IDs that fire user_profile_update_errors.
+ *
+ * On those screens the inline error path in user_profile_update_errors handles
+ * the unauthorized-domain case and renders a normal WP admin notice. Everywhere
+ * else (admin AJAX, importers, REST handlers running in admin context, custom
+ * registration flows) gets a wp_die() so the user is never silently created.
+ *
+ * @return array<int,string>
+ */
+function aed_inline_error_admin_screens() {
+    return [
+        'user-edit',
+        'user-new',
+        'user-edit-network',
+        'user-new-network',
+        'profile',
+        'profile-network',
+    ];
+}
+
+/**
  * Block disallowed email domains during programmatic user insert/update calls.
  *
  * This is the broader enforcement layer. It catches many plugin-driven flows
  * that bypass the standard registration form and call wp_insert_user() directly.
+ *
+ * Previously this short-circuited on a blanket is_admin() check, which let any
+ * admin-context request (admin-ajax, importers, custom admin pages, REST in
+ * admin context) create users with unauthorized domains. We now only short-
+ * circuit on the specific user-edit/user-new screens where user_profile_update_errors
+ * is guaranteed to render the inline error.
  */
 add_filter(
     'wp_pre_insert_user_data',
     function ($data, $update, $user_id, $userdata) {
-        if (!empty($data['user_email']) && !aed_is_email_allowed($data['user_email'])) {
-
-            /*
-             * The WordPress admin Add/Edit User screens are handled by
-             * user_profile_update_errors above so admins see a normal inline
-             * error instead of a full-page wp_die() message.
-             */
-            if (is_admin()) {
-                return $data;
-            }
-
-            wp_die(
-                esc_html__('This email domain is not approved for user accounts on this site.', 'page-authority-allowed-domains'),
-                esc_html__('Email Domain Restricted', 'page-authority-allowed-domains'),
-                ['response' => 403]
-            );
+        if (empty($data['user_email']) || aed_is_email_allowed($data['user_email'])) {
+            return $data;
         }
 
-        return $data;
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if ($screen && in_array($screen->id, aed_inline_error_admin_screens(), true)) {
+            // user_profile_update_errors will render an inline error here.
+            return $data;
+        }
+
+        wp_die(
+            esc_html__('This email domain is not approved for user accounts on this site.', 'page-authority-allowed-domains'),
+            esc_html__('Email Domain Restricted', 'page-authority-allowed-domains'),
+            ['response' => 403]
+        );
     },
     10,
     4
@@ -432,15 +470,6 @@ add_action('admin_head-profile.php', 'aed_print_email_disclaimer');
  */
 
 /**
- * Determine the required capability for managing the allowlist.
- *
- * Single site: manage_options
- * Multisite: manage_network_options
- *
- * @return string
- */
-
-/**
  * Get the canonical plugin settings URL.
  *
  * @param array<string,string|int> $args Optional query args.
@@ -463,7 +492,14 @@ function aed_get_settings_url($args = [], $fragment = '') {
     return $url;
 }
 
-
+/**
+ * Determine the required capability for managing the allowlist.
+ *
+ * Single site: manage_options
+ * Multisite: manage_network_options
+ *
+ * @return string
+ */
 function aed_manage_capability() {
     return is_multisite() ? 'manage_network_options' : 'manage_options';
 }
@@ -493,16 +529,16 @@ add_action(
 add_action(
     'admin_init',
     function () {
-        $action = filter_input(INPUT_POST, 'aed_action', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+        $action = isset($_POST['aed_action']) ? wp_unslash($_POST['aed_action']) : '';
         if ($action !== 'save_domains') {
             return;
         }
 
+        check_admin_referer('aed_save_domains');
+
         if (!current_user_can(aed_manage_capability())) {
             wp_die(esc_html__('You do not have permission to manage allowed email domains.', 'page-authority-allowed-domains'));
         }
-
-        check_admin_referer('aed_save_domains');
 
         $raw_domains = isset($_POST[AED_OPTION_KEY]) ? sanitize_textarea_field(wp_unslash($_POST[AED_OPTION_KEY])) : '';
         $clean_domains = aed_sanitize_domains($raw_domains);
@@ -705,15 +741,16 @@ add_filter(
  * Handle login-blocking setting changes.
  */
 function aed_handle_login_blocking_setting() {
-    if (empty($_POST['aed_action']) || $_POST['aed_action'] !== 'save_login_blocking') {
+    $action = isset($_POST['aed_action']) ? wp_unslash($_POST['aed_action']) : '';
+    if ($action !== 'save_login_blocking') {
         return;
     }
+
+    check_admin_referer('aed_save_login_blocking');
 
     if (!current_user_can(aed_manage_capability())) {
         wp_die(esc_html__('You do not have permission to manage login enforcement.', 'page-authority-allowed-domains'));
     }
-
-    check_admin_referer('aed_save_login_blocking');
 
     $enabled = !empty($_POST[AED_LOGIN_BLOCK_OPTION_KEY]) ? 1 : 0;
 
@@ -740,15 +777,6 @@ add_action('admin_init', 'aed_handle_login_blocking_setting');
  */
 
 /**
- * Find existing users whose email domains are not currently allowed.
- *
- * This is audit-only. It does not delete, disable, modify, or log out users.
- * Empty allowlist means all domains are allowed, so no users are flagged.
- *
- * @return array<int,array<string,string>>
- */
-
-/**
  * Clear the Existing User Audit cache.
  *
  * Call this whenever allowlist data or user email/domain state may have changed.
@@ -765,6 +793,8 @@ function aed_clear_audit_cache() {
  * This function intentionally performs no destructive action. It only creates
  * display data for the audit report and admin notice.
  *
+ * Paginated to avoid loading all users into memory at once on large sites.
+ *
  * @return array<int,array<string,string>>
  */
 function aed_build_unauthorized_existing_users_audit() {
@@ -772,26 +802,33 @@ function aed_build_unauthorized_existing_users_audit() {
         return [];
     }
 
-    $users = get_users(
-        [
-            'fields' => ['ID', 'user_login', 'user_email', 'display_name'],
-            'number' => -1,
-        ]
-    );
-
     $flagged = [];
+    $paged   = 1;
 
-    foreach ($users as $user) {
-        if (!aed_is_email_allowed($user->user_email)) {
-            $flagged[] = [
-                'id'           => (string) $user->ID,
-                'user_login'   => (string) $user->user_login,
-                'display_name' => (string) $user->display_name,
-                'user_email'   => (string) $user->user_email,
-                'domain'       => aed_get_email_domain($user->user_email),
-            ];
+    do {
+        $users = get_users(
+            [
+                'fields' => ['ID', 'user_login', 'user_email', 'display_name'],
+                'number' => AED_USER_QUERY_BATCH_SIZE,
+                'paged'  => $paged,
+            ]
+        );
+
+        foreach ($users as $user) {
+            if (!aed_is_email_allowed($user->user_email)) {
+                $flagged[] = [
+                    'id'           => (string) $user->ID,
+                    'user_login'   => (string) $user->user_login,
+                    'display_name' => (string) $user->display_name,
+                    'user_email'   => (string) $user->user_email,
+                    'domain'       => aed_get_email_domain($user->user_email),
+                ];
+            }
         }
-    }
+
+        $batch_count = count($users);
+        $paged++;
+    } while ($batch_count === AED_USER_QUERY_BATCH_SIZE);
 
     return $flagged;
 }
@@ -814,6 +851,86 @@ function aed_get_unauthorized_existing_users() {
     set_transient(AED_AUDIT_CACHE_KEY, $flagged, AED_AUDIT_CACHE_TTL);
 
     return $flagged;
+}
+
+/**
+ * Count the content owned by a user that would be affected by deletion.
+ *
+ * Counts every post of every type owned by the user except auto-drafts and
+ * trash entries, which are not user-facing content. This matches the set of
+ * posts that wp_delete_user() will either reassign or delete.
+ *
+ * @param int $user_id User ID.
+ * @return int Number of posts owned by the user.
+ */
+function aed_count_user_owned_content($user_id) {
+    global $wpdb;
+
+    $user_id = (int) $user_id;
+    if ($user_id <= 0) {
+        return 0;
+    }
+
+    return (int) $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT COUNT(ID) FROM {$wpdb->posts} WHERE post_author = %d AND post_status NOT IN ('auto-draft', 'trash')",
+            $user_id
+        )
+    );
+}
+
+/**
+ * Return users whose email domain IS on the allowlist.
+ *
+ * Used to populate the reassignment dropdown when deleting an unauthorized user.
+ * Excludes the user being deleted. Capped at AED_REASSIGN_DROPDOWN_LIMIT to keep
+ * the dropdown usable.
+ *
+ * @param int $exclude_user_id User ID to exclude from the result.
+ * @return array{users: array<int,array<string,mixed>>, truncated: bool}
+ */
+function aed_get_compliant_users_for_reassignment($exclude_user_id) {
+    $exclude_user_id = (int) $exclude_user_id;
+    $eligible        = [];
+    $paged           = 1;
+    $truncated       = false;
+
+    do {
+        $users = get_users(
+            [
+                'fields'  => ['ID', 'user_login', 'user_email', 'display_name'],
+                'number'  => AED_USER_QUERY_BATCH_SIZE,
+                'paged'   => $paged,
+                'exclude' => $exclude_user_id > 0 ? [$exclude_user_id] : [],
+            ]
+        );
+
+        foreach ($users as $user) {
+            if (!aed_is_email_allowed($user->user_email)) {
+                continue;
+            }
+
+            $eligible[] = [
+                'id'           => (int) $user->ID,
+                'user_login'   => (string) $user->user_login,
+                'display_name' => (string) $user->display_name,
+                'user_email'   => (string) $user->user_email,
+            ];
+
+            if (count($eligible) >= AED_REASSIGN_DROPDOWN_LIMIT) {
+                $truncated = true;
+                break 2;
+            }
+        }
+
+        $batch_count = count($users);
+        $paged++;
+    } while ($batch_count === AED_USER_QUERY_BATCH_SIZE);
+
+    return [
+        'users'     => $eligible,
+        'truncated' => $truncated,
+    ];
 }
 
 /**
@@ -875,28 +992,117 @@ add_action('admin_notices', 'aed_show_unauthorized_users_admin_notice');
 
 
 /**
+ * AJAX endpoint: return delete-confirmation info for a user.
+ *
+ * Used by the deletion modal to display the user's owned-content count and the
+ * list of compliant users available for reassignment. Read-only — performs no
+ * destructive action.
+ *
+ * Protection:
+ * - capability check
+ * - per-user nonce
+ * - current-user exclusion
+ * - multisite Super Admin exclusion
+ * - rechecks that the target user is still unauthorized
+ *
+ * @return void
+ */
+function aed_ajax_get_user_delete_info() {
+    $user_id = isset($_REQUEST['user_id']) ? absint($_REQUEST['user_id']) : 0;
+
+    check_ajax_referer('aed_get_user_delete_info_' . $user_id, 'nonce');
+
+    if (!current_user_can(aed_manage_capability())) {
+        wp_send_json_error(
+            ['message' => __('You do not have permission to manage users.', 'page-authority-allowed-domains')],
+            403
+        );
+    }
+
+    if ($user_id <= 0) {
+        wp_send_json_error(
+            ['message' => __('Invalid user.', 'page-authority-allowed-domains')],
+            400
+        );
+    }
+
+    if ($user_id === get_current_user_id()) {
+        wp_send_json_error(
+            ['message' => __('You cannot delete your own account from the audit.', 'page-authority-allowed-domains')],
+            403
+        );
+    }
+
+    if (is_multisite() && is_super_admin($user_id)) {
+        wp_send_json_error(
+            ['message' => __('Super Admins cannot be deleted from the audit.', 'page-authority-allowed-domains')],
+            403
+        );
+    }
+
+    $user = get_userdata($user_id);
+
+    if (!$user) {
+        wp_send_json_error(
+            ['message' => __('User not found.', 'page-authority-allowed-domains')],
+            404
+        );
+    }
+
+    if (aed_is_email_allowed($user->user_email)) {
+        wp_send_json_error(
+            ['message' => __('This user has an allowed email domain and cannot be deleted from the audit.', 'page-authority-allowed-domains')],
+            409
+        );
+    }
+
+    $content_count = aed_count_user_owned_content($user_id);
+    $eligible      = aed_get_compliant_users_for_reassignment($user_id);
+
+    wp_send_json_success(
+        [
+            'user_id'        => $user_id,
+            'user_login'     => $user->user_login,
+            'display_name'   => $user->display_name,
+            'user_email'     => $user->user_email,
+            'content_count'  => $content_count,
+            'eligible_users' => $eligible['users'],
+            'truncated'      => $eligible['truncated'],
+        ]
+    );
+}
+add_action('wp_ajax_aed_get_user_delete_info', 'aed_ajax_get_user_delete_info');
+
+
+/**
  * Delete one unauthorized user from the Existing User Audit.
  *
  * This action is protected by:
+ * - nonce verification (bound to specific user ID)
  * - capability check
- * - nonce verification
  * - current-user exclusion
  * - multisite Super Admin exclusion
  * - revalidation that the selected user is still unauthorized
+ * - validation of reassignment target (must exist and have a compliant email)
+ * - explicit confirmation when the user owns content (no silent content deletion)
+ *
+ * Query parameters honored:
+ * - reassign_to=N    : reassign content to user N (must be compliant)
+ * - aed_delete_content=1 : explicitly delete the user's content (no reassign)
+ *
+ * If the user owns content and neither parameter is provided, the request is
+ * refused. The modal supplies one of these; the failsafe protects admins who
+ * have JavaScript disabled.
  *
  * @return void
  */
 function aed_handle_delete_unauthorized_user() {
-    $action = filter_input(INPUT_GET, 'aed_action', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+    $action = isset($_GET['aed_action']) ? wp_unslash($_GET['aed_action']) : '';
     if ($action !== 'delete_unauthorized_user') {
         return;
     }
 
-    if (!current_user_can(aed_manage_capability())) {
-        wp_die(esc_html__('You do not have permission to delete users.', 'page-authority-allowed-domains'));
-    }
-
-    $user_id = absint(filter_input(INPUT_GET, 'user_id', FILTER_SANITIZE_NUMBER_INT));
+    $user_id = isset($_GET['user_id']) ? absint($_GET['user_id']) : 0;
 
     if (!$user_id) {
         wp_safe_redirect(
@@ -912,6 +1118,10 @@ function aed_handle_delete_unauthorized_user() {
     }
 
     check_admin_referer('aed_delete_unauthorized_user_' . $user_id);
+
+    if (!current_user_can(aed_manage_capability())) {
+        wp_die(esc_html__('You do not have permission to delete users.', 'page-authority-allowed-domains'));
+    }
 
     if ($user_id === get_current_user_id()) {
         wp_safe_redirect(
@@ -971,11 +1181,75 @@ function aed_handle_delete_unauthorized_user() {
         exit;
     }
 
+    // Resolve reassignment intent.
+    $reassign_to             = isset($_GET['reassign_to']) ? absint($_GET['reassign_to']) : 0;
+    $delete_content_confirmed = !empty($_GET['aed_delete_content']);
+    $content_count            = aed_count_user_owned_content($user_id);
+
+    if ($content_count > 0 && $reassign_to === 0 && !$delete_content_confirmed) {
+        // Failsafe: the modal always sends one of the two parameters. If neither
+        // is present and the user owns content, refuse to silently delete it.
+        wp_safe_redirect(
+            add_query_arg(
+                [
+                    'page' => 'aed-settings',
+                    'aed_delete_error' => 'content_no_confirmation',
+                ],
+                admin_url('users.php')
+            )
+        );
+        exit;
+    }
+
+    if ($reassign_to > 0) {
+        if ($reassign_to === $user_id) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'page' => 'aed-settings',
+                        'aed_delete_error' => 'invalid_reassign',
+                    ],
+                    admin_url('users.php')
+                )
+            );
+            exit;
+        }
+
+        $reassign_user = get_userdata($reassign_to);
+        if (!$reassign_user) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'page' => 'aed-settings',
+                        'aed_delete_error' => 'invalid_reassign',
+                    ],
+                    admin_url('users.php')
+                )
+            );
+            exit;
+        }
+
+        if (!aed_is_email_allowed($reassign_user->user_email)) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'page' => 'aed-settings',
+                        'aed_delete_error' => 'reassign_not_compliant',
+                    ],
+                    admin_url('users.php')
+                )
+            );
+            exit;
+        }
+    }
+
     if (!function_exists('wp_delete_user')) {
         require_once ABSPATH . 'wp-admin/includes/user.php';
     }
 
-    $deleted = wp_delete_user($user_id);
+    $deleted = $reassign_to > 0
+        ? wp_delete_user($user_id, $reassign_to)
+        : wp_delete_user($user_id);
 
     if ($deleted) {
         aed_clear_audit_cache();
@@ -984,9 +1258,10 @@ function aed_handle_delete_unauthorized_user() {
     wp_safe_redirect(
         add_query_arg(
             [
-                'page' => 'aed-settings',
-                'aed_deleted_user' => $deleted ? 1 : 0,
-                'aed_deleted_id'   => $user_id,
+                'page'                 => 'aed-settings',
+                'aed_deleted_user'     => $deleted ? 1 : 0,
+                'aed_deleted_id'       => $user_id,
+                'aed_deleted_reassign' => $reassign_to,
             ],
             admin_url('users.php')
         )
@@ -1005,9 +1280,13 @@ add_action('admin_init', 'aed_handle_delete_unauthorized_user');
  * to authorize the request as a submenu page before the action handler runs.
  *
  * This action is protected by:
+ * - nonce verification (bound to the requested domain, verified first)
  * - capability check
- * - nonce verification
  * - domain normalization/validation
+ *
+ * The nonce is verified against the raw URL "domain" value before normalization
+ * so an attacker cannot mutate the URL to a different domain and reuse a nonce
+ * that was generated for some other domain.
  *
  * After saving, the admin is redirected back to the audit section so the list
  * refreshes immediately with the updated allowlist.
@@ -1015,19 +1294,22 @@ add_action('admin_init', 'aed_handle_delete_unauthorized_user');
  * @return void
  */
 function aed_handle_add_audit_domain_to_allowlist() {
+    $raw_domain = isset($_GET['domain']) ? sanitize_text_field(wp_unslash($_GET['domain'])) : '';
+
+    // Verify the nonce first. It is keyed to the raw URL domain value, so a
+    // tampered URL fails here before anything else runs.
+    check_admin_referer('aed_add_audit_domain_' . md5($raw_domain));
+
     if (!current_user_can(aed_manage_capability())) {
         wp_die(esc_html__('You do not have permission to manage allowed domains.', 'page-authority-allowed-domains'));
     }
 
-    $domain = sanitize_text_field((string) filter_input(INPUT_GET, 'domain', FILTER_SANITIZE_FULL_SPECIAL_CHARS));
-    $domain = aed_normalize_domain($domain);
+    $domain = aed_normalize_domain($raw_domain);
 
     if (!$domain) {
         wp_safe_redirect(aed_get_settings_url(['aed_add_error' => 'invalid_domain'], 'aed-existing-user-audit'));
         exit;
     }
-
-    check_admin_referer('aed_add_audit_domain_' . md5($domain));
 
     $domains = aed_get_allowed_domains();
 
@@ -1062,6 +1344,35 @@ add_action('user_register', 'aed_clear_audit_cache', 99);
  */
 
 /**
+ * Map a delete-error code to a human-readable notice.
+ *
+ * @param string $code Error code from the redirect URL.
+ * @return string Localized message, or empty string when the code is unknown.
+ */
+function aed_delete_error_message($code) {
+    switch ($code) {
+        case 'missing_user':
+            return __('No user was specified for deletion.', 'page-authority-allowed-domains');
+        case 'current_user':
+            return __('You cannot delete your own account from the audit.', 'page-authority-allowed-domains');
+        case 'super_admin':
+            return __('Super Admins cannot be deleted from the audit.', 'page-authority-allowed-domains');
+        case 'not_found':
+            return __('That user no longer exists.', 'page-authority-allowed-domains');
+        case 'user_allowed':
+            return __('That user now has an allowed email domain. Deletion was cancelled.', 'page-authority-allowed-domains');
+        case 'content_no_confirmation':
+            return __('The selected user owns posts or pages. Please confirm whether to reassign or delete that content before deleting the user.', 'page-authority-allowed-domains');
+        case 'invalid_reassign':
+            return __('The user selected for reassignment is invalid.', 'page-authority-allowed-domains');
+        case 'reassign_not_compliant':
+            return __('Content can only be reassigned to a user with an approved email domain.', 'page-authority-allowed-domains');
+        default:
+            return '';
+    }
+}
+
+/**
  * Render the settings page.
  *
  * @return void
@@ -1074,12 +1385,13 @@ function aed_render_settings_page() {
     $domains = implode("\n", aed_get_allowed_domains());
     $logs    = aed_get_option(AED_LOG_KEY, []);
 
-    $aed_updated_notice = filter_input(INPUT_GET, 'updated', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-    $aed_added_domain_notice = filter_input(INPUT_GET, 'aed_added_domain', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-    $aed_add_error_notice = filter_input(INPUT_GET, 'aed_add_error', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-    $aed_login_blocking_updated_notice = filter_input(INPUT_GET, 'aed_login_blocking_updated', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-    $aed_deleted_user_notice = filter_input(INPUT_GET, 'aed_deleted_user', FILTER_SANITIZE_NUMBER_INT);
-    $aed_delete_error_notice = filter_input(INPUT_GET, 'aed_delete_error', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+    $aed_updated_notice                = isset($_GET['updated']) ? sanitize_text_field(wp_unslash($_GET['updated'])) : '';
+    $aed_added_domain_notice           = isset($_GET['aed_added_domain']) ? sanitize_text_field(wp_unslash($_GET['aed_added_domain'])) : '';
+    $aed_add_error_notice              = isset($_GET['aed_add_error']) ? sanitize_text_field(wp_unslash($_GET['aed_add_error'])) : '';
+    $aed_login_blocking_updated_notice = isset($_GET['aed_login_blocking_updated']) ? sanitize_text_field(wp_unslash($_GET['aed_login_blocking_updated'])) : '';
+    $aed_deleted_user_notice           = isset($_GET['aed_deleted_user']) ? absint($_GET['aed_deleted_user']) : 0;
+    $aed_deleted_reassign_notice       = isset($_GET['aed_deleted_reassign']) ? absint($_GET['aed_deleted_reassign']) : 0;
+    $aed_delete_error_notice           = isset($_GET['aed_delete_error']) ? sanitize_text_field(wp_unslash($_GET['aed_delete_error'])) : '';
 
     ?>
     <div class="wrap">
@@ -1088,6 +1400,62 @@ function aed_render_settings_page() {
         <?php if (!empty($aed_updated_notice)) : ?>
             <div class="notice notice-success is-dismissible">
                 <p><?php esc_html_e('Allowed email domains updated.', 'page-authority-allowed-domains'); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($aed_login_blocking_updated_notice)) : ?>
+            <div class="notice notice-success is-dismissible">
+                <p><?php esc_html_e('Login enforcement setting saved.', 'page-authority-allowed-domains'); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($aed_added_domain_notice)) : ?>
+            <div class="notice notice-success is-dismissible">
+                <p>
+                    <?php esc_html_e('Domain added to the allowlist:', 'page-authority-allowed-domains'); ?>
+                    <code><?php echo esc_html($aed_added_domain_notice); ?></code>
+                </p>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($aed_add_error_notice === 'invalid_domain') : ?>
+            <div class="notice notice-error is-dismissible">
+                <p><?php esc_html_e('The domain could not be added. Make sure it is a valid domain (e.g. @example.com).', 'page-authority-allowed-domains'); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($aed_deleted_user_notice === 1) : ?>
+            <div class="notice notice-success is-dismissible">
+                <p>
+                    <?php
+                    if ($aed_deleted_reassign_notice > 0) {
+                        $reassign_user = get_userdata($aed_deleted_reassign_notice);
+                        $reassign_label = $reassign_user
+                            ? ($reassign_user->display_name ?: $reassign_user->user_login)
+                            : sprintf(__('user #%d', 'page-authority-allowed-domains'), $aed_deleted_reassign_notice);
+                        printf(
+                            /* translators: %s: display name of the user content was reassigned to. */
+                            esc_html__('User deleted. Their content was reassigned to %s.', 'page-authority-allowed-domains'),
+                            '<strong>' . esc_html($reassign_label) . '</strong>'
+                        );
+                    } else {
+                        esc_html_e('User deleted.', 'page-authority-allowed-domains');
+                    }
+                    ?>
+                </p>
+            </div>
+        <?php elseif ($aed_deleted_user_notice === 0 && !empty($_GET['aed_deleted_id'])) : ?>
+            <div class="notice notice-error is-dismissible">
+                <p><?php esc_html_e('User could not be deleted. Please try again.', 'page-authority-allowed-domains'); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <?php
+        $delete_error_message = aed_delete_error_message($aed_delete_error_notice);
+        if ($delete_error_message !== '') :
+            ?>
+            <div class="notice notice-error is-dismissible">
+                <p><?php echo esc_html($delete_error_message); ?></p>
             </div>
         <?php endif; ?>
 
@@ -1130,7 +1498,7 @@ function aed_render_settings_page() {
             <?php submit_button(__('Save Domains', 'page-authority-allowed-domains')); ?>
         </form>
 
-        
+
         <hr>
 
         <h2><?php esc_html_e('Login Enforcement', 'page-authority-allowed-domains'); ?></h2>
@@ -1232,11 +1600,14 @@ function aed_render_settings_page() {
                                     ),
                                     'aed_delete_unauthorized_user_' . (int) $audit_user['id']
                                 );
+                                $info_nonce = wp_create_nonce('aed_get_user_delete_info_' . (int) $audit_user['id']);
                                 ?>
                                 <a
                                     href="<?php echo esc_url($delete_url); ?>"
-                                    class="submitdelete"
-                                    onclick="return confirm('<?php echo esc_js(__('Delete this unauthorized user? This cannot be undone.', 'page-authority-allowed-domains')); ?>');"
+                                    class="submitdelete aed-delete-user-link"
+                                    data-aed-user-id="<?php echo esc_attr((int) $audit_user['id']); ?>"
+                                    data-aed-info-nonce="<?php echo esc_attr($info_nonce); ?>"
+                                    data-aed-user-label="<?php echo esc_attr($audit_user['display_name'] ?: $audit_user['user_login']); ?>"
                                 >
                                     <?php esc_html_e('Delete user', 'page-authority-allowed-domains'); ?>
                                 </a>
@@ -1245,6 +1616,8 @@ function aed_render_settings_page() {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+
+            <?php aed_render_delete_user_modal(); ?>
         <?php endif; ?>
 
 
@@ -1286,16 +1659,423 @@ function aed_render_settings_page() {
 }
 
 
+/**
+ * Render the delete-user confirmation modal (markup, styles, behavior).
+ *
+ * The modal is hidden by default and only shown when an admin clicks a
+ * "Delete user" link in the audit table. It fetches per-user info over AJAX
+ * (post/page count + list of compliant users) and gives the admin three
+ * explicit choices when content is present:
+ *   1. Reassign all content to a compliant user (dropdown)
+ *   2. Delete the user and all their content
+ *   3. Cancel
+ *
+ * When the user owns no content, only "Delete user" and "Cancel" are shown.
+ *
+ * @return void
+ */
+function aed_render_delete_user_modal() {
+    ?>
+    <div id="aed-delete-modal" class="aed-modal" hidden role="dialog" aria-modal="true" aria-labelledby="aed-modal-title">
+        <div class="aed-modal-backdrop" data-aed-close></div>
+        <div class="aed-modal-dialog" role="document">
+            <header class="aed-modal-header">
+                <h2 id="aed-modal-title"><?php esc_html_e('Delete unauthorized user', 'page-authority-allowed-domains'); ?></h2>
+                <button type="button" class="aed-modal-close" aria-label="<?php esc_attr_e('Close', 'page-authority-allowed-domains'); ?>" data-aed-close>&times;</button>
+            </header>
+
+            <div class="aed-modal-body">
+                <div class="aed-modal-loading">
+                    <p><?php esc_html_e('Loading user details…', 'page-authority-allowed-domains'); ?></p>
+                </div>
+
+                <div class="aed-modal-error notice notice-error inline" hidden>
+                    <p data-aed-error-message></p>
+                </div>
+
+                <div class="aed-modal-content" hidden>
+                    <p>
+                        <?php
+                        printf(
+                            /* translators: %s: user display name. */
+                            esc_html__('You are about to delete %s.', 'page-authority-allowed-domains'),
+                            '<strong data-aed-user-label></strong>'
+                        );
+                        ?>
+                        <br>
+                        <span class="description" data-aed-user-email></span>
+                    </p>
+
+                    <div class="aed-modal-content-none" hidden>
+                        <p><?php esc_html_e('This user does not own any posts or pages. Their account will be removed.', 'page-authority-allowed-domains'); ?></p>
+                    </div>
+
+                    <div class="aed-modal-content-present" hidden>
+                        <p>
+                            <strong data-aed-content-count></strong>
+                            <?php esc_html_e('What should happen to their content?', 'page-authority-allowed-domains'); ?>
+                        </p>
+
+                        <fieldset class="aed-reassign-options">
+                            <label class="aed-reassign-option">
+                                <input type="radio" name="aed-reassign-mode" value="reassign" checked>
+                                <span><?php esc_html_e('Reassign all content to:', 'page-authority-allowed-domains'); ?></span>
+                            </label>
+
+                            <select class="aed-reassign-select" aria-label="<?php esc_attr_e('Reassign content to user', 'page-authority-allowed-domains'); ?>">
+                                <option value=""><?php esc_html_e('— Select a user —', 'page-authority-allowed-domains'); ?></option>
+                            </select>
+
+                            <p class="aed-reassign-truncated description" hidden>
+                                <?php
+                                printf(
+                                    /* translators: %d: maximum number of users shown. */
+                                    esc_html__('Showing the first %d compliant users. Use the WordPress Users screen for sites with larger lists.', 'page-authority-allowed-domains'),
+                                    (int) AED_REASSIGN_DROPDOWN_LIMIT
+                                );
+                                ?>
+                            </p>
+
+                            <p class="aed-reassign-empty description" hidden>
+                                <?php esc_html_e('No other users with an approved email domain exist yet. Add a compliant user before reassigning content, or choose "Delete all content" below.', 'page-authority-allowed-domains'); ?>
+                            </p>
+
+                            <label class="aed-reassign-option">
+                                <input type="radio" name="aed-reassign-mode" value="delete">
+                                <span><?php esc_html_e('Delete the user and all their content', 'page-authority-allowed-domains'); ?></span>
+                            </label>
+
+                            <p class="description aed-delete-content-warning">
+                                <?php esc_html_e('Deleting content is permanent. Make sure you have a recent backup.', 'page-authority-allowed-domains'); ?>
+                            </p>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="aed-modal-footer" hidden>
+                <button type="button" class="button" data-aed-close><?php esc_html_e('Cancel', 'page-authority-allowed-domains'); ?></button>
+                <button type="button" class="button button-primary aed-modal-confirm" disabled>
+                    <?php esc_html_e('Confirm deletion', 'page-authority-allowed-domains'); ?>
+                </button>
+            </footer>
+        </div>
+    </div>
+
+    <style>
+        .aed-modal[hidden] { display: none; }
+        .aed-modal {
+            position: fixed; inset: 0; z-index: 160000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .aed-modal-backdrop {
+            position: absolute; inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+        }
+        .aed-modal-dialog {
+            position: relative;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 6px 32px rgba(0, 0, 0, 0.28);
+            width: 560px; max-width: calc(100vw - 32px);
+            max-height: calc(100vh - 64px);
+            display: flex; flex-direction: column;
+        }
+        .aed-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid #dcdcde;
+        }
+        .aed-modal-header h2 { margin: 0; font-size: 16px; line-height: 1.4; }
+        .aed-modal-close {
+            background: transparent; border: 0; cursor: pointer;
+            font-size: 24px; line-height: 1; color: #50575e;
+            padding: 0 4px;
+        }
+        .aed-modal-close:hover { color: #135e96; }
+        .aed-modal-body {
+            padding: 18px;
+            overflow-y: auto;
+            flex: 1 1 auto;
+        }
+        .aed-modal-footer {
+            display: flex; justify-content: flex-end; gap: 8px;
+            padding: 12px 18px;
+            border-top: 1px solid #dcdcde;
+            background: #f6f7f7;
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+        .aed-modal-loading p { margin: 0; color: #50575e; }
+        .aed-modal-error { margin: 0 0 12px; }
+        .aed-reassign-options { border: 0; margin: 0; padding: 0; }
+        .aed-reassign-option { display: block; margin: 8px 0 4px; }
+        .aed-reassign-option input { margin-right: 6px; }
+        .aed-reassign-select { display: block; margin: 6px 0 12px 24px; min-width: 280px; max-width: 100%; }
+        .aed-reassign-truncated,
+        .aed-reassign-empty { margin: 0 0 12px 24px; }
+        .aed-delete-content-warning { color: #8a2424; margin-left: 24px; }
+    </style>
+
+    <script>
+    (function () {
+        document.addEventListener('DOMContentLoaded', function () {
+            var modal = document.getElementById('aed-delete-modal');
+            if (!modal) { return; }
+
+            var links = document.querySelectorAll('.aed-delete-user-link');
+            if (!links.length) { return; }
+
+            var loadingEl    = modal.querySelector('.aed-modal-loading');
+            var errorEl      = modal.querySelector('.aed-modal-error');
+            var errorMsgEl   = modal.querySelector('[data-aed-error-message]');
+            var contentEl    = modal.querySelector('.aed-modal-content');
+            var footerEl     = modal.querySelector('.aed-modal-footer');
+            var confirmBtn   = modal.querySelector('.aed-modal-confirm');
+            var labelEl      = modal.querySelector('[data-aed-user-label]');
+            var emailEl      = modal.querySelector('[data-aed-user-email]');
+            var noneSection  = modal.querySelector('.aed-modal-content-none');
+            var presSection  = modal.querySelector('.aed-modal-content-present');
+            var countEl      = modal.querySelector('[data-aed-content-count]');
+            var selectEl     = modal.querySelector('.aed-reassign-select');
+            var truncatedEl  = modal.querySelector('.aed-reassign-truncated');
+            var emptyEl      = modal.querySelector('.aed-reassign-empty');
+            var modeInputs   = modal.querySelectorAll('input[name="aed-reassign-mode"]');
+
+            var currentHref       = '';
+            var currentContentNum = 0;
+
+            function resetModal() {
+                loadingEl.hidden  = false;
+                errorEl.hidden    = true;
+                contentEl.hidden  = true;
+                footerEl.hidden   = true;
+                noneSection.hidden = true;
+                presSection.hidden = true;
+                truncatedEl.hidden = true;
+                emptyEl.hidden     = true;
+                selectEl.innerHTML = '<option value=""><?php echo esc_js(__('— Select a user —', 'page-authority-allowed-domains')); ?></option>';
+                confirmBtn.disabled = true;
+                modeInputs.forEach(function (input) {
+                    input.checked = (input.value === 'reassign');
+                    input.disabled = false;
+                });
+            }
+
+            function openModal() {
+                resetModal();
+                modal.hidden = false;
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeModal() {
+                modal.hidden = true;
+                document.body.style.overflow = '';
+                currentHref = '';
+                currentContentNum = 0;
+            }
+
+            function showError(message) {
+                loadingEl.hidden = true;
+                errorEl.hidden   = false;
+                contentEl.hidden = true;
+                footerEl.hidden  = false;
+                confirmBtn.hidden = true;
+                errorMsgEl.textContent = message || '<?php echo esc_js(__('Unexpected error.', 'page-authority-allowed-domains')); ?>';
+            }
+
+            function populate(data) {
+                loadingEl.hidden = true;
+                errorEl.hidden   = true;
+                contentEl.hidden = false;
+                footerEl.hidden  = false;
+                confirmBtn.hidden = false;
+
+                labelEl.textContent = data.display_name || data.user_login || '';
+                emailEl.textContent = data.user_email || '';
+
+                currentContentNum = parseInt(data.content_count, 10) || 0;
+
+                if (currentContentNum === 0) {
+                    noneSection.hidden = false;
+                    presSection.hidden = true;
+                    confirmBtn.disabled = false;
+                    return;
+                }
+
+                noneSection.hidden = true;
+                presSection.hidden = false;
+
+                // Build a localized "owns N posts/pages" message.
+                var phrase = (currentContentNum === 1)
+                    ? '<?php echo esc_js(__('This user owns 1 post or page.', 'page-authority-allowed-domains')); ?>'
+                    : '<?php echo esc_js(__('This user owns COUNT posts or pages.', 'page-authority-allowed-domains')); ?>'.replace('COUNT', currentContentNum);
+                countEl.textContent = phrase;
+
+                var eligible = Array.isArray(data.eligible_users) ? data.eligible_users : [];
+                if (eligible.length === 0) {
+                    emptyEl.hidden = false;
+                    // Force "delete" mode and disable reassign radio.
+                    modeInputs.forEach(function (input) {
+                        if (input.value === 'reassign') {
+                            input.disabled = true;
+                            input.checked  = false;
+                        }
+                        if (input.value === 'delete') {
+                            input.checked = true;
+                        }
+                    });
+                    selectEl.disabled = true;
+                } else {
+                    eligible.forEach(function (user) {
+                        var opt = document.createElement('option');
+                        opt.value = String(user.id);
+                        var label = user.display_name || user.user_login || ('User #' + user.id);
+                        opt.textContent = label + ' (' + (user.user_email || '') + ')';
+                        selectEl.appendChild(opt);
+                    });
+                    if (data.truncated) {
+                        truncatedEl.hidden = false;
+                    }
+                }
+
+                updateConfirmState();
+            }
+
+            function selectedMode() {
+                var sel = modal.querySelector('input[name="aed-reassign-mode"]:checked');
+                return sel ? sel.value : '';
+            }
+
+            function updateConfirmState() {
+                if (currentContentNum === 0) {
+                    confirmBtn.disabled = false;
+                    return;
+                }
+                var mode = selectedMode();
+                if (mode === 'reassign') {
+                    confirmBtn.disabled = !selectEl.value;
+                } else if (mode === 'delete') {
+                    confirmBtn.disabled = false;
+                } else {
+                    confirmBtn.disabled = true;
+                }
+            }
+
+            function buildFinalUrl() {
+                if (!currentHref) { return ''; }
+                var url;
+                try {
+                    url = new URL(currentHref, window.location.origin);
+                } catch (e) {
+                    return currentHref;
+                }
+
+                if (currentContentNum === 0) {
+                    // No content — no extra params required, but mark explicit
+                    // so the server's failsafe sees a deliberate request.
+                    url.searchParams.set('aed_delete_content', '1');
+                    return url.toString();
+                }
+
+                var mode = selectedMode();
+                if (mode === 'reassign' && selectEl.value) {
+                    url.searchParams.set('reassign_to', selectEl.value);
+                } else {
+                    url.searchParams.set('aed_delete_content', '1');
+                }
+                return url.toString();
+            }
+
+            function fetchInfo(userId, infoNonce) {
+                var body = new URLSearchParams();
+                body.append('action', 'aed_get_user_delete_info');
+                body.append('user_id', userId);
+                body.append('nonce', infoNonce);
+
+                fetch(window.ajaxurl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: body.toString()
+                })
+                .then(function (response) {
+                    return response.json().catch(function () {
+                        throw new Error('<?php echo esc_js(__('Server returned an unexpected response.', 'page-authority-allowed-domains')); ?>');
+                    });
+                })
+                .then(function (json) {
+                    if (!json || !json.success) {
+                        var msg = (json && json.data && json.data.message)
+                            ? json.data.message
+                            : '<?php echo esc_js(__('Unable to load user details.', 'page-authority-allowed-domains')); ?>';
+                        showError(msg);
+                        return;
+                    }
+                    populate(json.data || {});
+                })
+                .catch(function (err) {
+                    showError(err && err.message ? err.message : '<?php echo esc_js(__('Network error.', 'page-authority-allowed-domains')); ?>');
+                });
+            }
+
+            // Wire link clicks.
+            links.forEach(function (link) {
+                link.addEventListener('click', function (event) {
+                    var userId    = this.getAttribute('data-aed-user-id');
+                    var infoNonce = this.getAttribute('data-aed-info-nonce');
+                    if (!userId || !infoNonce) { return; }
+
+                    event.preventDefault();
+                    currentHref = this.getAttribute('href');
+                    openModal();
+                    fetchInfo(userId, infoNonce);
+                });
+            });
+
+            // Wire modal interactions.
+            modal.addEventListener('click', function (event) {
+                if (event.target.matches('[data-aed-close]')) {
+                    closeModal();
+                }
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && !modal.hidden) {
+                    closeModal();
+                }
+            });
+
+            modeInputs.forEach(function (input) {
+                input.addEventListener('change', updateConfirmState);
+            });
+
+            selectEl.addEventListener('change', updateConfirmState);
+
+            confirmBtn.addEventListener('click', function () {
+                var url = buildFinalUrl();
+                if (url) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.textContent = '<?php echo esc_js(__('Deleting…', 'page-authority-allowed-domains')); ?>';
+                    window.location.href = url;
+                }
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
+
 
 /**
  * Add quick plugin action links on the Plugins screen.
  *
  * Adds:
  * - Settings
- * - README
  *
- * This improves admin navigation and provides quick access to plugin
- * documentation directly from the Plugins page.
+ * This improves admin navigation and provides quick access directly from the
+ * Plugins page.
  *
  * @param array $links Existing plugin action links.
  * @return array
@@ -1318,15 +2098,6 @@ add_filter(
     'plugin_action_links_' . plugin_basename(__FILE__),
     'aed_plugin_action_links'
 );
-
-
-
-
-
-
-
-
-
 
 
 /**
@@ -1377,8 +2148,7 @@ function aed_do_activation_redirect() {
         return;
     }
 
-    $activate_multi = filter_input(INPUT_GET, 'activate-multi', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-    if ($activate_multi !== null) {
+    if (isset($_GET['activate-multi'])) {
         return;
     }
 
@@ -1390,19 +2160,6 @@ function aed_do_activation_redirect() {
 }
 
 add_action('admin_init', 'aed_do_activation_redirect');
-
-/**
- * Add update success redirect helper.
- *
- * After plugin updates, admins can quickly return to the settings page from
- * the Plugins screen using the existing Settings quick link.
- *
- * WordPress does not provide a reliable native post-update redirect hook for
- * standard plugin upgrades, so activation redirects are intentionally limited
- * to first-time activation only.
- */
-
-
 
 
 /**

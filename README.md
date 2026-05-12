@@ -4,7 +4,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 
 ## Version
 
-1.8.15
+1.9.0
 
 ## Features
 
@@ -13,7 +13,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 * Supports standard WordPress, REST API, and WooCommerce registrations
 * Existing user audit tools
 * Optional login enforcement
-* Per-user unauthorized account removal
+* Per-user unauthorized account removal with content reassignment
 * Multisite-aware protections
 * Lightweight with no custom database tables
 * Short-lived audit caching for better admin performance
@@ -48,16 +48,18 @@ The plugin currently includes:
 * WooCommerce registration enforcement
 * optional login-time enforcement
 * existing user audit reporting
-* per-user unauthorized account deletion tools
+* per-user unauthorized account deletion tools with content reassignment
 * multisite-aware safeguards
 
 Safety protections include:
 
 * capability checks
-* nonce verification
+* nonce verification (verified before any state changes)
 * confirmation prompts
+* explicit content reassignment or delete confirmation before user removal
 * current-admin protection
 * multisite Super Admin protection
+* server-side failsafe that refuses to silently delete a user's content
 
 Recommended operational practices:
 
@@ -84,6 +86,17 @@ The audit does not automatically:
 
 Unauthorized users can be reviewed individually, removed directly from the audit table, or used to quickly add their domain to the allowlist.
 
+## Deleting Unauthorized Users
+
+When deleting an unauthorized user from the audit, the plugin checks for content owned by that user (posts, pages, and other published content). If any is present, a confirmation modal lets the administrator choose:
+
+* **Reassign all content** to another user whose email domain is on the allowlist (only compliant users appear in the dropdown), or
+* **Delete the user and all their content**
+
+If a user owns no content, deletion proceeds with a simple confirmation.
+
+The server validates every reassignment target, refuses to silently delete content if neither option was explicitly selected, and rejects reassignment to a user whose email is not on the allowlist.
+
 ## Uninstall
 
 Deleting the plugin from WordPress removes:
@@ -95,6 +108,18 @@ Deleting the plugin from WordPress removes:
 On multisite, the matching network options are also removed.
 
 ## Changelog
+
+### 1.9.0
+
+- Security: nonce verification now runs before capability checks and before any input processing in the audit-domain-add and user-delete handlers
+- Security: programmatic user creation in admin context (admin-ajax, importers, REST in admin) is no longer silently allowed; only the user-edit/user-new screens still defer to the inline error path
+- Performance: existing-user audit query is paginated to avoid loading every user into memory on large sites
+- Feature: deleting an unauthorized user who owns posts or pages now opens a confirmation modal with a dropdown of compliant users for content reassignment, or an explicit "delete content" option
+- Feature: success notice when a domain is added directly from the audit
+- Feature: clearer error notices for delete failures (missing user, current user, super admin, allowed-now, content-without-confirmation, invalid reassignment target)
+- Hardening: server-side failsafe refuses to delete a user with owned content unless reassignment or explicit content-delete is specified (protects JS-disabled admins)
+- Hardening: reassignment target is revalidated as a real, compliant user before deletion proceeds
+- Cleanup: removed dead query-parameter handling, consistent `wp_unslash`-based POST input handling throughout
 
 ### 1.8.15
 
