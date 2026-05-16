@@ -4,7 +4,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 
 ## Version
 
-1.9.0
+2.0.0
 
 ## Features
 
@@ -99,15 +99,29 @@ The server validates every reassignment target, refuses to silently delete conte
 
 ## Uninstall
 
-Deleting the plugin from WordPress removes:
+Deleting the plugin from WordPress removes its current options:
 
-* `aed_allowed_domains`
-* `aed_audit_log`
-* `aed_block_unauthorized_logins`
+* `pageauth_allowed_domains`
+* `pageauth_audit_log`
+* `pageauth_block_unauthorized_logins`
 
-On multisite, the matching network options are also removed.
+It also cleans up internal flags, transients, user meta, and any leftover keys from prior plugin versions that used the `paad_` or `aed_` prefixes. On multisite, the matching network options are removed as well.
 
 ## Changelog
+
+### 2.0.0
+
+- Compliance: renamed internal prefix from `paad_` (4 characters) to `pageauth_` (8 characters) across functions, constants, options, transients, user meta, nonces, AJAX actions, hooks, page slug, CSS classes, HTML IDs, and JavaScript data attributes. The new prefix is unique, brand-aligned, and far less likely to collide with any other plugin
+- Migration: existing allowlist, audit log, and login-blocking preference are migrated transparently on upgrade from either prior prefix (`paad_` from 1.9.1 or `aed_` from 1.9.0 and earlier)
+- Compatibility: both legacy settings URLs (`users.php?page=aed-settings` and `users.php?page=paad-settings`) now redirect to the current `pageauth-settings` slug
+- Cleanup: `uninstall.php` removes both the current and all legacy option, transient, and user-meta keys, so removal is clean regardless of which version was last installed
+
+### 1.9.1
+
+- Compliance: renamed internal prefix from `aed_` (3 characters) to `paad_` (4 characters) across functions, constants, options, transients, nonces, AJAX actions, page slug, CSS classes, and HTML IDs to meet WordPress.org Plugin Directory naming requirements
+- Migration: existing allowlist, audit log, and login-blocking preference are migrated transparently on upgrade
+- Compatibility: legacy `users.php?page=aed-settings` URL now redirects to the new `paad-settings` slug
+- Cleanup: rewrote `uninstall.php` to actually remove the options the plugin stores (the previous file targeted a key prefix that was never written), and added cleanup for legacy `aed_*` keys
 
 ### 1.9.0
 
