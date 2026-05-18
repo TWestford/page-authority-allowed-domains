@@ -94,6 +94,14 @@ Recommended operational practices:
 * Maintain regular database backups before deleting users
 * Restrict plugin management access to trusted administrators only
 
+== Screenshots ==
+
+1. The Allowed Domains settings page where administrators manage the email domain allowlist, with optional login enforcement and an existing user audit.
+2. Inline admin error shown when an administrator attempts to add a user with an unauthorized email domain.
+3. The Existing User Audit identifies users whose email domains are not currently approved and offers per-user actions.
+4. Content reassignment modal appears when deleting an unauthorized user who owns posts or pages.
+5. Recent allowlist changes log tracks who modified the allowlist and when.
+
 == Uninstall ==
 
 Deleting the plugin removes its current options:
