@@ -4,7 +4,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 
 ## Version
 
-2.0.0
+2.0.1
 
 ## Features
 
@@ -37,7 +37,7 @@ Restricts WordPress user accounts to administrator-approved email domains.
 
 * WordPress 6.0+
 * PHP 7.4+
-* Tested on WordPress 6.9
+* Tested on WordPress 7.0
 
 ## Security & Enforcement
 
@@ -108,6 +108,13 @@ Deleting the plugin from WordPress removes its current options:
 It also cleans up internal flags, transients, user meta, and any leftover keys from prior plugin versions that used the `paad_` or `aed_` prefixes. On multisite, the matching network options are removed as well.
 
 ## Changelog
+
+### 2.0.1
+
+- Compatibility: confirmed compatibility with WordPress 7.0, updated `Tested up to` accordingly
+- Feature: added a "Support" link next to the existing "GitHub" link on the Plugins screen, pointing to the plugin's WordPress.org support forum
+- UX: the domain input on the settings page no longer implies the `@` prefix is required. Placeholder and description now indicate that domains can be entered with or without the leading `@`. Validation behavior is unchanged
+- Hardening: AJAX-driven user creation requests with an unauthorized email domain now receive a structured JSON error response (HTTP 403 with `pageauth_invalid_domain` code) instead of a full-page `wp_die()`, so third-party plugins that create users via admin-ajax can surface the error inline
 
 ### 2.0.0
 

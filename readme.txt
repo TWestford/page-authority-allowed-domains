@@ -2,9 +2,9 @@
 Contributors: twestford
 Tags: users, security, registration, email, domains
 Requires at least: 6.0
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -113,6 +113,12 @@ Deleting the plugin removes its current options:
 It also cleans up internal flags, transients, user meta, and any leftover keys from prior plugin versions that used the `paad_` or `aed_` prefixes. On multisite, the matching network options are removed as well.
 
 == Changelog ==
+
+= 2.0.1 =
+* Compatibility: confirmed compatibility with WordPress 7.0, updated "Tested up to" accordingly
+* Feature: added a "Support" link next to the existing "GitHub" link on the Plugins screen, pointing to the plugin's WordPress.org support forum
+* UX: the domain input on the settings page no longer implies the @ prefix is required. Placeholder and description now indicate that domains can be entered with or without the leading @. Validation behavior is unchanged
+* Hardening: AJAX-driven user creation requests with an unauthorized email domain now receive a structured JSON error response (HTTP 403 with pageauth_invalid_domain code) instead of a full-page wp_die(), so third-party plugins that create users via admin-ajax can surface the error inline
 
 = 2.0.0 =
 * Compliance: renamed internal prefix from `paad_` (4 characters) to `pageauth_` (8 characters) across functions, constants, options, transients, user meta, nonces, AJAX actions, hooks, page slug, CSS classes, HTML IDs, and JavaScript data attributes. The new prefix is unique, brand-aligned, and far less likely to collide with any other plugin

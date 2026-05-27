@@ -2,9 +2,9 @@
 /**
  * Plugin Name: Page Authority - Allowed Domains
  * Description: Restricts WordPress user emails to an administrator-managed allowlist of approved domains.
- * Version: 2.0.0
+ * Version: 2.0.1
  * Requires at least: 6.0
- * Tested up to: 6.9
+ * Tested up to: 7.0
  * Requires PHP: 7.4
  * Author: Talisa @ Page Authority.
  * Author URI: https://pageauthority.com/
@@ -515,8 +515,27 @@ add_filter(
             return $data;
         }
 
+        $error_message = __('This email domain is not approved for user accounts on this site.', 'page-authority-allowed-domains');
+
+        /*
+         * For AJAX-driven user creation (third-party bulk importers, custom user-
+         * management plugins, etc.), respond with a structured JSON error so the
+         * calling plugin's JavaScript can read and surface it inline. Falling
+         * through to wp_die() in those contexts would render a full-page 403
+         * inside an XHR response, which most front-end code can't display well.
+         */
+        if (wp_doing_ajax()) {
+            wp_send_json_error(
+                [
+                    'code'    => 'pageauth_invalid_domain',
+                    'message' => $error_message,
+                ],
+                403
+            );
+        }
+
         wp_die(
-            esc_html__('This email domain is not approved for user accounts on this site.', 'page-authority-allowed-domains'),
+            esc_html($error_message),
             esc_html__('Email Domain Restricted', 'page-authority-allowed-domains'),
             ['response' => 403]
         );
@@ -1621,11 +1640,11 @@ function pageauth_render_settings_page() {
                             rows="10"
                             cols="50"
                             class="large-text code"
-                            placeholder="@example.com&#10;@example.org&#10;@example.co.uk"
+                            placeholder="example.com&#10;example.org&#10;example.co.uk"
                         ><?php echo esc_textarea($domains); ?></textarea>
 
                         <p class="description">
-                            <?php esc_html_e('One domain per line. Entries are normalized to start with "@". A valid suffix/TLD is required. Empty list allows all domains.', 'page-authority-allowed-domains'); ?>
+                            <?php esc_html_e('One domain per line, with or without the "@" prefix. A valid suffix/TLD is required (e.g. example.com or @example.com). Empty list allows all domains.', 'page-authority-allowed-domains'); ?>
                         </p>
                     </td>
                 </tr>
@@ -2300,7 +2319,7 @@ add_action('admin_init', 'pageauth_do_activation_redirect');
 
 
 /**
- * Add GitHub to the plugin row metadata on the Plugins screen.
+ * Add GitHub and Support links to the plugin row metadata on the Plugins screen.
  *
  * @param array  $links Plugin row meta links.
  * @param string $file  Plugin file path.
@@ -2315,6 +2334,11 @@ function pageauth_plugin_row_meta_links($links, $file) {
     $links[] =
         '<a href="https://github.com/TWestford/page-authority-allowed-domains" target="_blank" rel="noopener noreferrer">' .
         esc_html__('GitHub', 'page-authority-allowed-domains') .
+        '</a>';
+
+    $links[] =
+        '<a href="https://wordpress.org/support/plugin/page-authority-allowed-domains/" target="_blank" rel="noopener noreferrer">' .
+        esc_html__('Support', 'page-authority-allowed-domains') .
         '</a>';
 
     return $links;
